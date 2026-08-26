@@ -49,8 +49,8 @@ export async function deleteOffering(managerId: string, offeringId: string): Pro
   await db.delete(offerings).where(eq(offerings.id, offeringId));
 }
 
-export async function decrementStock(offeringId: string, qty: number): Promise<void> {
-  const res = await db.update(offerings)
+export async function decrementStock(offeringId: string, qty: number, executor: typeof db = db): Promise<void> {
+  const res = await executor.update(offerings)
     .set({ stock: sql`${offerings.stock} - ${qty}` })
     .where(and(eq(offerings.id, offeringId), sql`${offerings.stock} >= ${qty}`))
     .returning();

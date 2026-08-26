@@ -57,10 +57,36 @@ test("cannot deliver before picked_up", async () => {
   const { mgr, usr, biz, off, par } = await seed();
   const order = await createOrder(usr.id, { businessId: biz.id, items: [{ offeringId: off.id, quantity: 1 }], deliveryAddress: "h", deliveryLat: 26.91, deliveryLng: 75.78 });
   await acceptOrder(mgr.id, order.id);
-  await expect(advanceOrderStatus(par.id, order.id, "delivered")).rejects.toThrow();
+  await expect(advanceOrderStatus(par.id, order.id, "delivered")).rejects.toMatchObject({ status: 409 });
 });
 
 test("user cannot order from own business", async () => {
   const { mgr, biz, off } = await seed();
-  await expect(createOrder(mgr.id, { businessId: biz.id, items: [{ offeringId: off.id, quantity: 1 }], deliveryAddress: "h", deliveryLat: 1, deliveryLng: 1 })).rejects.toThrow();
+  await expect(createOrder(mgr.id, { businessId: biz.id, items: [{ offeringId: off.id, quantity: 1 }], deliveryAddress: "h", deliveryLat: 1, deliveryLng: 1 })).rejects.toMatchObject({ status: 403 });
+});
+
+test("non-owning manager cannot accept order", async () => {
+  const { usr, biz, off } = await seed();
+  const [mgr2] = await db.insert(users).values({ name: "Mgr2", email: "mgr2@e.com", passwordHash: "x", role: "manager", city: "Jaipur" }).returning();
+  const order = await createOrder(usr.id, { businessId: biz.id, items: [{ offeringId: off.id, quantity: 1 }], deliveryAddress: "h", deliveryLat: 26.91, deliveryLng: 75.78 });
+  await expect(acceptOrder(mgr2.id, order.id)).rejects.toMatchObject({ status: 403 });
+});
+
+test("createOrder with service-type offering throws 400", async () => {
+  const { usr, biz } = await seed();
+  const [svc] = await db.insert(offerings).values({ businessId: biz.id, type: "service", name: "Haircut", price: 200, durationMinutes: 30 }).returning();
+  await expect(createOrder(usr.id, { businessId: biz.id, items: [{ offeringId: svc.id, quantity: 1 }], deliveryAddress: "h", deliveryLat: 26.91, deliveryLng: 75.78 })).rejects.toMatchObject({ status: 400 });
+});
+
+test("createOrder with duplicate offeringId line items succeeds", async () => {
+  const { usr, biz, off } = await seed();
+  // Same offeringId appears twice — deduped set has 1 entry, offs.length === uniqueIds.length — should not falsely 400
+  const order = await createOrder(usr.id, {
+    businessId: biz.id,
+    items: [{ offeringId: off.id, quantity: 1 }, { offeringId: off.id, quantity: 2 }],
+    deliveryAddress: "h", deliveryLat: 26.91, deliveryLng: 75.78,
+  });
+  // Two line items, total = 3 * 100
+  expect(order.totalAmount).toBe(300);
+  expect(order.status).toBe("pending");
 });

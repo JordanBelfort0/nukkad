@@ -1,7 +1,7 @@
 import { db } from "@/lib/db/client";
 import { orders, orderItems, offerings, businesses, deliveryProfiles } from "@/lib/db/schema";
 import { HttpError } from "@/lib/http";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { decrementStock } from "./catalog";
 import { findNearestPartner } from "./assignment";
 
@@ -18,25 +18,28 @@ export async function createOrder(userId: string, input: OrderInput): Promise<Or
   if (biz.managerId === userId) throw new HttpError(403, "Cannot order from your own business");
 
   const ids = input.items.map(i => i.offeringId);
-  const offs = await db.select().from(offerings).where(inArray(offerings.id, ids));
-  if (offs.length !== ids.length) throw new HttpError(400, "Unknown offering");
+  const uniqueIds = [...new Set(ids)];
+  const offs = await db.select().from(offerings).where(inArray(offerings.id, uniqueIds));
+  if (offs.length !== uniqueIds.length) throw new HttpError(400, "Unknown offering");
   if (offs.some(o => o.businessId !== input.businessId)) throw new HttpError(400, "All items must be from one business");
   if (offs.some(o => o.type !== "product")) throw new HttpError(400, "Only products can be ordered");
 
   const priceById = new Map(offs.map(o => [o.id, o.price]));
   const total = input.items.reduce((sum, i) => sum + priceById.get(i.offeringId)! * i.quantity, 0);
 
-  const [order] = await db.insert(orders).values({
-    userId, businessId: input.businessId, status: "pending",
-    deliveryAddress: input.deliveryAddress, deliveryLat: input.deliveryLat, deliveryLng: input.deliveryLng,
-    totalAmount: total,
-  }).returning();
+  return await db.transaction(async (tx) => {
+    const [order] = await tx.insert(orders).values({
+      userId, businessId: input.businessId, status: "pending",
+      deliveryAddress: input.deliveryAddress, deliveryLat: input.deliveryLat, deliveryLng: input.deliveryLng,
+      totalAmount: total,
+    }).returning();
 
-  await db.insert(orderItems).values(input.items.map(i => ({
-    orderId: order.id, offeringId: i.offeringId, quantity: i.quantity, unitPrice: priceById.get(i.offeringId)!,
-  })));
+    await tx.insert(orderItems).values(input.items.map(i => ({
+      orderId: order.id, offeringId: i.offeringId, quantity: i.quantity, unitPrice: priceById.get(i.offeringId)!,
+    })));
 
-  return order;
+    return order;
+  });
 }
 
 export async function acceptOrder(managerId: string, orderId: string): Promise<Order> {
@@ -47,15 +50,18 @@ export async function acceptOrder(managerId: string, orderId: string): Promise<O
   if (order.status !== "pending") throw new HttpError(409, "Order not pending");
 
   const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
-  for (const it of items) await decrementStock(it.offeringId, it.quantity);
-
   const partnerId = await findNearestPartner(order.businessId);
-  const [updated] = await db.update(orders)
-    .set({ status: partnerId ? "assigned" : "accepted", deliveryPartnerId: partnerId })
-    .where(eq(orders.id, orderId)).returning();
 
-  if (partnerId) await db.update(deliveryProfiles).set({ isAvailable: false }).where(eq(deliveryProfiles.userId, partnerId));
-  return updated;
+  return await db.transaction(async (tx) => {
+    for (const it of items) await decrementStock(it.offeringId, it.quantity, tx as unknown as typeof db);
+
+    const [updated] = await tx.update(orders)
+      .set({ status: partnerId ? "assigned" : "accepted", deliveryPartnerId: partnerId })
+      .where(eq(orders.id, orderId)).returning();
+
+    if (partnerId) await tx.update(deliveryProfiles).set({ isAvailable: false }).where(eq(deliveryProfiles.userId, partnerId));
+    return updated;
+  });
 }
 
 const NEXT: Record<string, string> = { assigned: "picked_up", picked_up: "delivered" };
