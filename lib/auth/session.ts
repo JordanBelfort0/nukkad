@@ -3,7 +3,11 @@ import { SignJWT, jwtVerify } from "jose";
 export type Role = "manager" | "user" | "delivery";
 export interface SessionPayload { userId: string; role: Role }
 
-const secret = () => new TextEncoder().encode(process.env.JWT_SECRET!);
+const secret = () => {
+  const s = process.env.JWT_SECRET;
+  if (!s) throw new Error("JWT_SECRET is not set");
+  return new TextEncoder().encode(s);
+};
 
 export async function signSession(payload: SessionPayload): Promise<string> {
   return new SignJWT({ ...payload })
