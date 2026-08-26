@@ -5,6 +5,32 @@ import { apiGet, apiPatch } from "@/lib/api-client";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
+type BookingStatus = "requested" | "accepted" | "declined" | "completed";
+
+interface BookingRequest {
+  id: string;
+  userId: string;
+  businessId: string;
+  offeringId: string;
+  status: BookingStatus;
+  note: string | null;
+  createdAt: string;
+}
+
+const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
+  requested: "Requested",
+  accepted: "Accepted",
+  declined: "Declined",
+  completed: "Completed",
+};
+
+const BOOKING_STATUS_COLORS: Record<BookingStatus, string> = {
+  requested: "bg-yellow-100 text-yellow-800",
+  accepted: "bg-green-100 text-green-800",
+  declined: "bg-red-100 text-red-800",
+  completed: "bg-gray-100 text-gray-700",
+};
+
 type Role = "manager" | "user" | "delivery";
 
 interface Me {
@@ -113,6 +139,12 @@ function ManagerDashboard() {
   const [accepting, setAccepting] = useState<Record<string, boolean>>({});
   const [acceptError, setAcceptError] = useState<Record<string, string>>({});
 
+  const [bookings, setBookings] = useState<BookingRequest[] | null>(null);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
+  const [decidingBooking, setDecidingBooking] = useState<Record<string, boolean>>({});
+  const [bookingDecideError, setBookingDecideError] = useState<Record<string, string>>({});
+
   const loadOrders = useCallback(async () => {
     setLoading(true);
     try {
@@ -126,7 +158,39 @@ function ManagerDashboard() {
     }
   }, []);
 
+  const loadBookings = useCallback(async () => {
+    setBookingsLoading(true);
+    try {
+      const data = await apiGet<BookingRequest[]>("/api/manager/bookings");
+      setBookings(data);
+      setBookingsError(null);
+    } catch (err: unknown) {
+      setBookingsError(err instanceof Error ? err.message : "Failed to load bookings.");
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, []);
+
   useEffect(() => { loadOrders(); }, [loadOrders]);
+  useEffect(() => { loadBookings(); }, [loadBookings]);
+
+  async function handleBookingDecision(bookingId: string, decision: "accepted" | "declined") {
+    setDecidingBooking((prev) => ({ ...prev, [bookingId]: true }));
+    setBookingDecideError((prev) => ({ ...prev, [bookingId]: "" }));
+    try {
+      const updated = await apiPatch<BookingRequest>(`/api/bookings/${bookingId}`, { decision });
+      setBookings((prev) =>
+        prev ? prev.map((b) => (b.id === bookingId ? { ...b, ...updated } : b)) : prev
+      );
+    } catch (err: unknown) {
+      setBookingDecideError((prev) => ({
+        ...prev,
+        [bookingId]: err instanceof Error ? err.message : "Failed to update booking.",
+      }));
+    } finally {
+      setDecidingBooking((prev) => ({ ...prev, [bookingId]: false }));
+    }
+  }
 
   async function handleAccept(orderId: string) {
     setAccepting((prev) => ({ ...prev, [orderId]: true }));
@@ -173,12 +237,80 @@ function ManagerDashboard() {
         <button type="button" onClick={loadOrders} className="text-sm text-blue-600 hover:underline">Refresh</button>
       </div>
 
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-        <p className="text-xs text-amber-700">
-          <strong>Note:</strong> Booking requests cannot be listed here — no list-bookings-for-manager endpoint exists. To respond to a booking, use{" "}
-          <code className="bg-amber-100 px-1 rounded">PATCH /api/bookings/:id</code> directly.
-        </p>
-      </div>
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold text-gray-800">
+            Booking requests <span className="ml-1 text-sm font-normal text-gray-500">({bookings?.length ?? 0})</span>
+          </h2>
+          <button type="button" onClick={loadBookings} className="text-sm text-blue-600 hover:underline">Refresh</button>
+        </div>
+
+        {bookingsLoading ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-center">
+            <p className="text-gray-500 text-sm">Loading bookings…</p>
+          </div>
+        ) : bookingsError ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-center">
+            <p className="text-red-600 text-sm">{bookingsError}</p>
+          </div>
+        ) : !bookings || bookings.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-center">
+            <p className="text-gray-500 text-sm">No booking requests yet.</p>
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {bookings.map((b) => {
+              const isRequested = b.status === "requested";
+              const busy = decidingBooking[b.id];
+              const err = bookingDecideError[b.id];
+              return (
+                <li key={b.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-400 font-mono">{b.id.slice(0, 8)}…</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Offering: <span className="font-mono">{b.offeringId.slice(0, 8)}…</span></p>
+                      {b.note && <p className="text-sm text-gray-700 mt-1 italic">&ldquo;{b.note}&rdquo;</p>}
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {new Date(b.createdAt).toLocaleDateString("en-IN", {
+                          day: "numeric", month: "short", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                    <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${BOOKING_STATUS_COLORS[b.status]}`}>
+                      {BOOKING_STATUS_LABELS[b.status]}
+                    </span>
+                  </div>
+
+                  {isRequested && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      {err && <p className="mb-2 text-xs text-red-600">{err}</p>}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleBookingDecision(b.id, "accepted")}
+                          disabled={busy}
+                          className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {busy ? "Updating…" : "Accept"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleBookingDecision(b.id, "declined")}
+                          disabled={busy}
+                          className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {busy ? "Updating…" : "Decline"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <section>
         <h2 className="text-base font-semibold text-gray-800 mb-3">

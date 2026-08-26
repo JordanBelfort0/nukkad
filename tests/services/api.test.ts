@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { resetDb } from "../helpers/db";
 import { db } from "@/lib/db/client";
-import { users, businesses, offerings, orders } from "@/lib/db/schema";
+import { users, businesses, offerings, orders, bookingRequests } from "@/lib/db/schema";
 
 // Mock the session so requireRole returns a chosen identity.
 let current: { userId: string; role: "manager" | "user" | "delivery" } | null = null;
@@ -117,4 +117,46 @@ test("POST /api/businesses — 409 if manager already has a business", async () 
   // Try to create a second business
   const res = await POST(jsonReq({ name: "B2", category: "c", city: "Jaipur", address: "a", lat: 1, lng: 1 }));
   expect(res.status).toBe(409);
+});
+
+test("GET /api/manager/bookings — returns booking requests for manager's business", async () => {
+  // Seed two managers, each with their own business
+  const [mgr1] = await db.insert(users).values({ name: "Mgr1", email: "mgr1@e.com", passwordHash: "x", role: "manager", city: "Jaipur" }).returning();
+  const [mgr2] = await db.insert(users).values({ name: "Mgr2", email: "mgr2@e.com", passwordHash: "x", role: "manager", city: "Jaipur" }).returning();
+  const [u] = await db.insert(users).values({ name: "User", email: "user@e.com", passwordHash: "x", role: "user", city: "Jaipur" }).returning();
+
+  const [biz1] = await db.insert(businesses).values({ managerId: mgr1.id, name: "Biz1", category: "food", city: "Jaipur", address: "Addr", lat: 26, lng: 75 }).returning();
+  const [biz2] = await db.insert(businesses).values({ managerId: mgr2.id, name: "Biz2", category: "food", city: "Jaipur", address: "Addr", lat: 26, lng: 75 }).returning();
+
+  const [off1] = await db.insert(offerings).values({ businessId: biz1.id, type: "service", name: "Svc", price: 100, durationMinutes: 60 }).returning();
+
+  // User books a service at mgr1's business
+  await db.insert(bookingRequests).values({ userId: u.id, businessId: biz1.id, offeringId: off1.id, status: "requested" });
+
+  const { GET } = await import("@/app/api/manager/bookings/route");
+
+  // mgr1 should see the booking
+  current = { userId: mgr1.id, role: "manager" };
+  const res1 = await GET(new Request("http://t"));
+  expect(res1.status).toBe(200);
+  const json1 = await res1.json();
+  expect(json1.length).toBe(1);
+  expect(json1[0].businessId).toBe(biz1.id);
+  expect(json1[0].offeringId).toBe(off1.id);
+
+  // mgr2 has no bookings at their business
+  current = { userId: mgr2.id, role: "manager" };
+  const res2 = await GET(new Request("http://t"));
+  expect(res2.status).toBe(200);
+  const json2 = await res2.json();
+  expect(json2).toEqual([]);
+
+  // biz2 has no offerings, so we also test manager with a business but no bookings
+  // (already confirmed via mgr2 above; additionally verify empty-businesses case)
+  const [mgr3] = await db.insert(users).values({ name: "Mgr3", email: "mgr3@e.com", passwordHash: "x", role: "manager", city: "Jaipur" }).returning();
+  current = { userId: mgr3.id, role: "manager" };
+  const res3 = await GET(new Request("http://t"));
+  expect(res3.status).toBe(200);
+  const json3 = await res3.json();
+  expect(json3).toEqual([]);
 });
