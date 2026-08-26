@@ -35,3 +35,8 @@ export const orderSchema = z.object({
 });
 
 export const bookingSchema = z.object({ offeringId: z.string().uuid(), note: z.string().optional() });
+
+export const reviewSchema = z.object({
+  businessId: z.string().uuid(), orderId: z.string().uuid().optional(),
+  rating: z.number().int().min(1).max(5), comment: z.string().optional(),
+});
