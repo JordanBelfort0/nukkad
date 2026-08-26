@@ -83,10 +83,23 @@ export default function OfferingsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // ── Load business from manager orders endpoint heuristic ─────────────────
-  // No dedicated GET-my-business; we try GET /api/businesses/:id after
-  // business is stored. On first load we check manager/orders to infer a
-  // businessId, then fall through to "create" state.
+  // ── Load manager's own business ──────────────────────────────────────────
+  const reloadManagerBusiness = useCallback(async () => {
+    try {
+      const data = await apiGet<{ business: Business; offerings: Offering[] } | null>("/api/manager/business");
+      if (data) {
+        setBusiness(data.business);
+        setOfferings(data.offerings ?? []);
+      } else {
+        setBusiness(null);
+        setOfferings([]);
+      }
+    } catch (err: unknown) {
+      setBusinessError(err instanceof Error ? err.message : "Failed to load business.");
+    }
+  }, []);
+
+  // Keep a helper for reloading by id (used after add/delete offering)
   const reloadBusiness = useCallback(async (id: string) => {
     try {
       const data = await apiGet<BusinessWithOfferings>(`/api/businesses/${id}`);
@@ -98,19 +111,8 @@ export default function OfferingsPage() {
   }, []);
 
   useEffect(() => {
-    // Try to discover the manager's businessId via manager/orders
-    apiGet<{ businessId: string }[]>("/api/manager/orders")
-      .then((orders) => {
-        if (orders.length > 0) {
-          const id = orders[0].businessId;
-          return reloadBusiness(id);
-        }
-      })
-      .catch(() => {
-        // No orders or no business yet — show create form
-      })
-      .finally(() => setLoadingBusiness(false));
-  }, [reloadBusiness]);
+    reloadManagerBusiness().finally(() => setLoadingBusiness(false));
+  }, [reloadManagerBusiness]);
 
   // ── Create business ───────────────────────────────────────────────────────
   async function handleCreateBusiness(e: React.FormEvent) {
@@ -138,7 +140,12 @@ export default function OfferingsPage() {
       setBusiness(created);
       setOfferings([]);
     } catch (err: unknown) {
-      setBError(err instanceof Error ? err.message : "Failed to create business.");
+      const msg = err instanceof Error ? err.message : "Failed to create business.";
+      setBError(msg);
+      // If already exists (409), reload from server so the UI reflects the existing business
+      if (msg.includes("already have a business")) {
+        await reloadManagerBusiness();
+      }
     } finally {
       setBSubmitting(false);
     }

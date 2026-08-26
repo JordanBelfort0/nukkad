@@ -47,6 +47,65 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   cancelled: "bg-red-100 text-red-800",
 };
 
+interface OrderCardProps {
+  order: Order;
+  onAccept: (orderId: string) => void;
+  accepting: Record<string, boolean>;
+  acceptError: Record<string, string>;
+}
+
+function OrderCard({ order, onAccept, accepting, acceptError }: OrderCardProps) {
+  const isPending = order.status === "pending";
+  const err = acceptError[order.id];
+  const isAccepting = accepting[order.id];
+
+  return (
+    <li className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-gray-400 font-mono">{order.id.slice(0, 8)}…</p>
+          <p className="text-sm text-gray-700 mt-1 truncate">{order.deliveryAddress}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {new Date(order.createdAt).toLocaleDateString("en-IN", {
+              day: "numeric", month: "short", year: "numeric",
+              hour: "2-digit", minute: "2-digit",
+            })}
+          </p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[order.status]}`}>
+            {STATUS_LABELS[order.status]}
+          </span>
+          <p className="text-sm font-semibold text-gray-900 mt-1">₹{order.totalAmount.toFixed(2)}</p>
+        </div>
+      </div>
+
+      {order.deliveryPartnerId && (
+        <p className="mt-2 text-xs text-gray-500">
+          Partner: <span className="font-mono text-gray-700">{order.deliveryPartnerId.slice(0, 8)}…</span>
+        </p>
+      )}
+      {order.status === "accepted" && !order.deliveryPartnerId && (
+        <p className="mt-2 text-xs text-blue-600">Waiting for a delivery partner…</p>
+      )}
+
+      {isPending && (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          {err && <p className="mb-2 text-xs text-red-600">{err}</p>}
+          <button
+            type="button"
+            onClick={() => onAccept(order.id)}
+            disabled={isAccepting}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isAccepting ? "Accepting…" : "Accept order"}
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
 function ManagerDashboard() {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,58 +166,6 @@ function ManagerDashboard() {
   const active = orders?.filter((o) => !["pending", "delivered", "cancelled"].includes(o.status)) ?? [];
   const past = orders?.filter((o) => ["delivered", "cancelled"].includes(o.status)) ?? [];
 
-  function OrderCard({ order }: { order: Order }) {
-    const isPending = order.status === "pending";
-    const err = acceptError[order.id];
-    const isAccepting = accepting[order.id];
-
-    return (
-      <li className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-400 font-mono">{order.id.slice(0, 8)}…</p>
-            <p className="text-sm text-gray-700 mt-1 truncate">{order.deliveryAddress}</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {new Date(order.createdAt).toLocaleDateString("en-IN", {
-                day: "numeric", month: "short", year: "numeric",
-                hour: "2-digit", minute: "2-digit",
-              })}
-            </p>
-          </div>
-          <div className="text-right flex-shrink-0">
-            <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[order.status]}`}>
-              {STATUS_LABELS[order.status]}
-            </span>
-            <p className="text-sm font-semibold text-gray-900 mt-1">₹{order.totalAmount.toFixed(2)}</p>
-          </div>
-        </div>
-
-        {order.deliveryPartnerId && (
-          <p className="mt-2 text-xs text-gray-500">
-            Partner: <span className="font-mono text-gray-700">{order.deliveryPartnerId.slice(0, 8)}…</span>
-          </p>
-        )}
-        {order.status === "accepted" && !order.deliveryPartnerId && (
-          <p className="mt-2 text-xs text-blue-600">Waiting for a delivery partner…</p>
-        )}
-
-        {isPending && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            {err && <p className="mb-2 text-xs text-red-600">{err}</p>}
-            <button
-              type="button"
-              onClick={() => handleAccept(order.id)}
-              disabled={isAccepting}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isAccepting ? "Accepting…" : "Accept order"}
-            </button>
-          </div>
-        )}
-      </li>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-8">
       <div className="flex items-center justify-between">
@@ -182,7 +189,7 @@ function ManagerDashboard() {
             <p className="text-gray-500 text-sm">No pending orders.</p>
           </div>
         ) : (
-          <ul className="flex flex-col gap-3">{pending.map((o) => <OrderCard key={o.id} order={o} />)}</ul>
+          <ul className="flex flex-col gap-3">{pending.map((o) => <OrderCard key={o.id} order={o} onAccept={handleAccept} accepting={accepting} acceptError={acceptError} />)}</ul>
         )}
       </section>
 
@@ -195,7 +202,7 @@ function ManagerDashboard() {
             <p className="text-gray-500 text-sm">No active orders in progress.</p>
           </div>
         ) : (
-          <ul className="flex flex-col gap-3">{active.map((o) => <OrderCard key={o.id} order={o} />)}</ul>
+          <ul className="flex flex-col gap-3">{active.map((o) => <OrderCard key={o.id} order={o} onAccept={handleAccept} accepting={accepting} acceptError={acceptError} />)}</ul>
         )}
       </section>
 
@@ -204,7 +211,7 @@ function ManagerDashboard() {
           <h2 className="text-base font-semibold text-gray-800 mb-3">
             Past orders <span className="ml-1 text-sm font-normal text-gray-500">({past.length})</span>
           </h2>
-          <ul className="flex flex-col gap-3">{past.map((o) => <OrderCard key={o.id} order={o} />)}</ul>
+          <ul className="flex flex-col gap-3">{past.map((o) => <OrderCard key={o.id} order={o} onAccept={handleAccept} accepting={accepting} acceptError={acceptError} />)}</ul>
         </section>
       )}
 
