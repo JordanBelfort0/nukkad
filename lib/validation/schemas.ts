@@ -33,3 +33,5 @@ export const orderSchema = z.object({
   deliveryAddress: z.string().min(1),
   deliveryLat: z.number(), deliveryLng: z.number(),
 });
+
+export const bookingSchema = z.object({ offeringId: z.string().uuid(), note: z.string().optional() });
