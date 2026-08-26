@@ -5,6 +5,8 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL!,
+    // Prefer Neon's direct (unpooled) endpoint for DDL/migrations; falls back
+    // to DATABASE_URL for local Postgres or when unpooled isn't set.
+    url: process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL!,
   },
 });
