@@ -26,3 +26,10 @@ export const offeringSchema = z.object({
   imageUrl: z.string().url().optional(),
 }).refine(d => d.type !== "product" || d.stock != null, { message: "stock required for product" })
   .refine(d => d.type !== "service" || d.durationMinutes != null, { message: "durationMinutes required for service" });
+
+export const orderSchema = z.object({
+  businessId: z.string().uuid(),
+  items: z.array(z.object({ offeringId: z.string().uuid(), quantity: z.number().int().positive() })).min(1),
+  deliveryAddress: z.string().min(1),
+  deliveryLat: z.number(), deliveryLng: z.number(),
+});
