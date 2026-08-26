@@ -75,3 +75,46 @@ test("PATCH /api/delivery/availability — malformed body returns 400", async ()
   const res = await PATCH(jsonReq({ isAvailable: "yes", lat: 26.9, lng: 75.8 }, "PATCH"));
   expect(res.status).toBe(400);
 });
+
+test("GET /api/manager/business — returns manager's business, or null if none", async () => {
+  // Seed two managers
+  const [mgr1] = await db.insert(users).values({ name: "Mgr1", email: "mgr1@e.com", passwordHash: "x", role: "manager", city: "Jaipur" }).returning();
+  const [mgr2] = await db.insert(users).values({ name: "Mgr2", email: "mgr2@e.com", passwordHash: "x", role: "manager", city: "Jaipur" }).returning();
+
+  // Create a business for mgr1
+  const [biz] = await db.insert(businesses).values({ managerId: mgr1.id, name: "B1", category: "food", city: "Jaipur", address: "Addr", lat: 26, lng: 75 }).returning();
+
+  // Seed an offering for that business
+  await db.insert(offerings).values({ businessId: biz.id, type: "product", name: "Item", price: 10, stock: 100 });
+
+  const { GET } = await import("@/app/api/manager/business/route");
+
+  // mgr1 should get their business
+  current = { userId: mgr1.id, role: "manager" };
+  const res1 = await GET(new Request("http://t"));
+  expect(res1.status).toBe(200);
+  const json1 = await res1.json();
+  expect(json1.business.id).toBe(biz.id);
+  expect(json1.business.managerId).toBe(mgr1.id);
+  expect(json1.offerings.length).toBe(1);
+
+  // mgr2 should get null
+  current = { userId: mgr2.id, role: "manager" };
+  const res2 = await GET(new Request("http://t"));
+  expect(res2.status).toBe(200);
+  const json2 = await res2.json();
+  expect(json2).toBeNull();
+});
+
+test("POST /api/businesses — 409 if manager already has a business", async () => {
+  // Seed a manager with a business
+  const [mgr] = await db.insert(users).values({ name: "Mgr", email: "mgr@e.com", passwordHash: "x", role: "manager", city: "Jaipur" }).returning();
+  await db.insert(businesses).values({ managerId: mgr.id, name: "B1", category: "food", city: "Jaipur", address: "Addr", lat: 26, lng: 75 });
+
+  current = { userId: mgr.id, role: "manager" };
+  const { POST } = await import("@/app/api/businesses/route");
+
+  // Try to create a second business
+  const res = await POST(jsonReq({ name: "B2", category: "c", city: "Jaipur", address: "a", lat: 1, lng: 1 }));
+  expect(res.status).toBe(409);
+});
