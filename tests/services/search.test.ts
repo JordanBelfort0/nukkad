@@ -22,7 +22,7 @@ test("ranks nearer + higher-rated first and filters by city", async () => {
   const results = await searchOfferings({ city: "Jaipur", lat: 26.91, lng: 75.78 });
   expect(results.map(r => r.business.name)).toEqual(["Near", "Far"]);
   expect(results[0].distanceKm).toBeLessThan(1);
-}, 30000);
+});
 
 test("type filter works", async () => {
   await seedBiz("Near", 26.91, 75.78, 4.0);
