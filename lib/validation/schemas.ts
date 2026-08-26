@@ -40,3 +40,23 @@ export const reviewSchema = z.object({
   businessId: z.string().uuid(), orderId: z.string().uuid().optional(),
   rating: z.number().int().min(1).max(5), comment: z.string().optional(),
 });
+
+export const offeringPatchSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  price: z.number().nonnegative().optional(),
+  stock: z.number().int().nonnegative().optional(),
+  durationMinutes: z.number().int().positive().optional(),
+  isAvailable: z.boolean().optional(),
+  imageUrl: z.string().url().optional(),
+});
+
+export const availabilitySchema = z.object({
+  isAvailable: z.boolean(),
+  lat: z.number(),
+  lng: z.number(),
+});
+
+export const orderStatusUpdateSchema = z.object({ to: z.enum(["picked_up", "delivered"]) });
+
+export const bookingDecisionSchema = z.object({ decision: z.enum(["accepted", "declined"]) });
