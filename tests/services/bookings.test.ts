@@ -24,5 +24,24 @@ test("user books a service, manager accepts", async () => {
 
 test("cannot book a product as a service", async () => {
   const { usr, off } = await seed("product");
-  await expect(createBooking(usr.id, { offeringId: off.id })).rejects.toThrow();
+  await expect(createBooking(usr.id, { offeringId: off.id })).rejects.toMatchObject({ status: 400 });
+});
+
+test("createBooking with unknown offeringId throws 404", async () => {
+  const { usr } = await seed("service");
+  await expect(createBooking(usr.id, { offeringId: "00000000-0000-0000-0000-000000000000" })).rejects.toMatchObject({ status: 404 });
+});
+
+test("respondToBooking by non-owning manager throws 403", async () => {
+  const { usr, off } = await seed("service");
+  const [mgr2] = await db.insert(users).values({ name: "M2", email: "m2@e.com", passwordHash: "x", role: "manager", city: "Jaipur" }).returning();
+  const b = await createBooking(usr.id, { offeringId: off.id });
+  await expect(respondToBooking(mgr2.id, b.id, "accepted")).rejects.toMatchObject({ status: 403 });
+});
+
+test("respondToBooking on already-handled booking throws 409", async () => {
+  const { mgr, usr, off } = await seed("service");
+  const b = await createBooking(usr.id, { offeringId: off.id });
+  await respondToBooking(mgr.id, b.id, "accepted");
+  await expect(respondToBooking(mgr.id, b.id, "declined")).rejects.toMatchObject({ status: 409 });
 });

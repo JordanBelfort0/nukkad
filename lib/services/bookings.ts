@@ -19,6 +19,7 @@ export async function respondToBooking(managerId: string, bookingId: string, dec
   const [bk] = await db.select().from(bookingRequests).where(eq(bookingRequests.id, bookingId));
   if (!bk) throw new HttpError(404, "Booking not found");
   const [biz] = await db.select().from(businesses).where(eq(businesses.id, bk.businessId));
+  if (!biz) throw new HttpError(404, "Business not found");
   if (biz.managerId !== managerId) throw new HttpError(403, "Not your business");
   if (bk.status !== "requested") throw new HttpError(409, "Booking already handled");
   const [updated] = await db.update(bookingRequests).set({ status: decision }).where(eq(bookingRequests.id, bookingId)).returning();
