@@ -20,3 +20,8 @@ test("login rejects wrong password", async () => {
   const res = await login(req({ email: "a@e.com", password: "nope" }));
   expect(res.status).toBe(401);
 });
+
+test("malformed signup body returns 400", async () => {
+  const res = await signup(req({ email: "not-an-email" }));
+  expect(res.status).toBe(400);
+});
