@@ -30,6 +30,19 @@ test("type filter works", async () => {
   expect(products).toHaveLength(0);
 });
 
+test("q matches across offering name, description, business name and category", async () => {
+  const [m] = await db.insert(users).values({ name: "CM", email: "cm@e.com", passwordHash: "x", role: "manager", city: "Mumbai" }).returning();
+  const [b] = await db.insert(businesses).values({ managerId: m.id, name: "Fashion Hub", category: "Clothing", city: "Mumbai", address: "a", lat: 19.07, lng: 72.87, rating: 0 }).returning();
+  await db.insert(offerings).values({ businessId: b.id, type: "product", name: "saree1", description: "cotton fabric", price: 500, stock: 5 });
+  const params = { city: "Mumbai", lat: 19.07, lng: 72.87 };
+  expect((await searchOfferings({ ...params, q: "clothing" })).length).toBe(1); // category (substring)
+  expect((await searchOfferings({ ...params, q: "clothes" })).length).toBe(1);  // category via stemming (clothes→cloth←clothing)
+  expect((await searchOfferings({ ...params, q: "saree" })).length).toBe(1);    // name
+  expect((await searchOfferings({ ...params, q: "cotton" })).length).toBe(1);   // description
+  expect((await searchOfferings({ ...params, q: "fashion" })).length).toBe(1);  // business name
+  expect((await searchOfferings({ ...params, q: "zzz-nomatch" })).length).toBe(0);
+});
+
 test("city match is case-insensitive and trimmed", async () => {
   await seedBiz("MumbaiShop", 19.07, 72.87, 4.0, "Mumbai"); // stored "Mumbai"
   // user types a different casing / stray spaces
