@@ -29,3 +29,12 @@ test("type filter works", async () => {
   const products = await searchOfferings({ city: "Jaipur", lat: 26.91, lng: 75.78, type: "service" });
   expect(products).toHaveLength(0);
 });
+
+test("city match is case-insensitive and trimmed", async () => {
+  await seedBiz("MumbaiShop", 19.07, 72.87, 4.0, "Mumbai"); // stored "Mumbai"
+  // user types a different casing / stray spaces
+  const lower = await searchOfferings({ city: "mumbai", lat: 19.07, lng: 72.87 });
+  expect(lower.map((r) => r.business.name)).toContain("MumbaiShop");
+  const spaced = await searchOfferings({ city: "  MUMBAI ", lat: 19.07, lng: 72.87 });
+  expect(spaced.map((r) => r.business.name)).toContain("MumbaiShop");
+});

@@ -20,7 +20,9 @@ export async function searchOfferings(p: SearchParams): Promise<SearchResult[]> 
   const score = sql<number>`${businesses.rating} - (${distance} * 0.1)`;
 
   const conds = [
-    eq(businesses.city, p.city),
+    // case-insensitive + whitespace-tolerant city match (users type "Mumbai"
+    // vs a stored "mumbai"); exact eq would silently drop those results
+    sql`lower(trim(${businesses.city})) = lower(trim(${p.city}))`,
     eq(businesses.isActive, true),
     eq(offerings.isAvailable, true),
   ];

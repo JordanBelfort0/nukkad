@@ -19,7 +19,12 @@ export async function findNearestPartner(businessId: string): Promise<string | n
     .select({ userId: deliveryProfiles.userId })
     .from(deliveryProfiles)
     .innerJoin(users, eq(users.id, deliveryProfiles.userId))
-    .where(and(eq(deliveryProfiles.isAvailable, true), eq(users.city, b.city)))
+    .where(and(
+      eq(deliveryProfiles.isAvailable, true),
+      // case-insensitive + trimmed city match — mirrors search so a partner
+      // and a business that typed the city differently still match
+      sql`lower(trim(${users.city})) = lower(trim(${b.city}))`,
+    ))
     .orderBy(sql`${distance} ASC`)
     .limit(1);
 

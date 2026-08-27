@@ -36,3 +36,10 @@ test("returns null when nobody available", async () => {
   await partner("busy", 26.91, 75.78, false);
   expect(await findNearestPartner(b.id)).toBeNull();
 });
+
+test("partner city matches business city case-insensitively", async () => {
+  const [m] = await db.insert(users).values({ name: "Mci", email: "mci@e.com", passwordHash: "x", role: "manager", city: "mumbai" }).returning();
+  const [b] = await db.insert(businesses).values({ managerId: m.id, name: "B", category: "c", city: "mumbai", address: "a", lat: 19.07, lng: 72.87, rating: 0 }).returning();
+  const p = await partner("ci-partner", 19.07, 72.87, true, "Mumbai"); // partner "Mumbai" vs business "mumbai"
+  expect(await findNearestPartner(b.id)).toBe(p.id);
+});
